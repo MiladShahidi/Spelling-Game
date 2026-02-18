@@ -47,13 +47,65 @@
             font-size: 14px;
             color: #aaaaaa;
         }
+
+        #scoreDisplay {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            padding: 0 10px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        #breakStatus {
+            background: rgba(74, 222, 128, 0.2);
+            border: 2px solid #4ade80;
+            border-radius: 8px;
+            padding: 10px 20px;
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #4ade80;
+            min-height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+        }
+
+        #breakStatus.visible {
+            visibility: visible;
+        }
+
+        #inputDisplay {
+            margin-top: 15px;
+            font-size: 32px;
+            font-weight: bold;
+            height: 50px;
+            line-height: 50px;
+            padding: 0 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid #4a90e2;
+            border-radius: 8px;
+            letter-spacing: 2px;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
     <div id="gameContainer">
         <h1>Type Defense!</h1>
         <input type="file" id="wordFileInput" accept=".csv,.txt" style="display: none;">
+        <div id="scoreDisplay">
+            <div id="currentScore">Score: 0</div>
+            <div id="highScore">High Score: 0</div>
+        </div>
+        <div id="breakStatus"></div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="inputDisplay"></div>
         <div class="info">Type the words to shoot them down before they reach the ground!</div>
     </div>
 
@@ -632,17 +684,25 @@
             }
 
             drawInput(input, score, highScore, isOnBreak, breakWordsRemaining, recoveryWordsRemaining, isPaused) {
-                // Draw score
-                this.ctx.font = 'bold 24px Arial';
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.textAlign = 'left';
-                this.ctx.fillText(`Score: ${score}`, 20, 40);
+                // Update HTML elements instead of drawing on canvas
+                document.getElementById('currentScore').textContent = `Score: ${score}`;
+                document.getElementById('highScore').textContent = `High Score: ${highScore}`;
+                document.getElementById('inputDisplay').textContent = input || ' ';
 
-                // Draw high score
-                this.ctx.textAlign = 'right';
-                this.ctx.fillText(`High Score: ${highScore}`, CANVAS_WIDTH - 20, 40);
+                // Update break status
+                const breakStatusDiv = document.getElementById('breakStatus');
+                if (isOnBreak) {
+                    breakStatusDiv.classList.add('visible');
+                    if (breakWordsRemaining > 0) {
+                        breakStatusDiv.textContent = `BREAK TIME! Score: ${score} - ${breakWordsRemaining} words remaining`;
+                    } else if (recoveryWordsRemaining > 0) {
+                        breakStatusDiv.textContent = 'Speeding back up...';
+                    }
+                } else {
+                    breakStatusDiv.classList.remove('visible');
+                }
 
-                // Show pause overlay if paused
+                // Show pause overlay if paused (keep this on canvas)
                 if (isPaused) {
                     // Draw semi-transparent overlay
                     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -658,53 +718,15 @@
                     this.ctx.font = '24px Arial';
                     this.ctx.fillStyle = '#aaaaaa';
                     this.ctx.fillText('Press Escape to resume', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
-                    return; // Don't draw rest of UI when paused
                 }
-
-                // Show break notification if on break
-                if (isOnBreak) {
-                    // Draw semi-transparent overlay at top
-                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                    this.ctx.fillRect(0, 0, CANVAS_WIDTH, 100);
-
-                    // Draw break message
-                    this.ctx.font = 'bold 36px Arial';
-                    this.ctx.fillStyle = '#4ade80';
-                    this.ctx.textAlign = 'center';
-
-                    if (breakWordsRemaining > 0) {
-                        // Still in break period
-                        this.ctx.fillText(`BREAK TIME! Score: ${score}`, CANVAS_WIDTH / 2, 40);
-                        this.ctx.font = '24px Arial';
-                        this.ctx.fillText(`${breakWordsRemaining} words remaining`, CANVAS_WIDTH / 2, 75);
-                    } else if (recoveryWordsRemaining > 0) {
-                        // In recovery phase
-                        this.ctx.fillText('Speeding back up...', CANVAS_WIDTH / 2, 50);
-                    }
-                }
-
-                // Draw input box
-                const boxWidth = 400;
-                const boxHeight = 60;
-                const boxX = CANVAS_WIDTH / 2 - boxWidth / 2;
-                const boxY = CANVAS_HEIGHT - 120;
-
-                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-                this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-
-                this.ctx.strokeStyle = '#4a90e2';
-                this.ctx.lineWidth = 3;
-                this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-
-                // Draw input text
-                this.ctx.font = 'bold 32px Arial';
-                this.ctx.fillStyle = '#ffffff';
-                this.ctx.textAlign = 'center';
-                this.ctx.textBaseline = 'middle';
-                this.ctx.fillText(input, CANVAS_WIDTH / 2, boxY + boxHeight / 2);
             }
 
             drawStartScreen(highScore, wordManager) {
+                // Hide UI elements on start screen
+                document.getElementById('scoreDisplay').style.display = 'none';
+                document.getElementById('breakStatus').style.display = 'none';
+                document.getElementById('inputDisplay').style.display = 'none';
+
                 this.clear();
                 this.drawBackground();
 
@@ -758,6 +780,11 @@
             }
 
             drawGameOverScreen(score, highScore, isNewHigh, topScores) {
+                // Hide UI elements on game over screen
+                document.getElementById('scoreDisplay').style.display = 'none';
+                document.getElementById('breakStatus').style.display = 'none';
+                document.getElementById('inputDisplay').style.display = 'none';
+
                 this.clear();
                 this.drawBackground();
 
@@ -940,6 +967,11 @@
                 this.renderer.clearEffects();
                 // Set lastSpawnTime far in the past so first word spawns immediately
                 this.wordManager.lastSpawnTime = performance.now() - this.wordManager.spawnInterval;
+
+                // Show UI elements
+                document.getElementById('scoreDisplay').style.display = 'flex';
+                document.getElementById('breakStatus').style.display = 'flex';
+                document.getElementById('inputDisplay').style.display = 'block';
             }
 
             resetGame() {
