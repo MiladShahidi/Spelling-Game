@@ -631,7 +631,7 @@
                 });
             }
 
-            drawInput(input, score, highScore, isOnBreak, breakWordsRemaining, recoveryWordsRemaining) {
+            drawInput(input, score, highScore, isOnBreak, breakWordsRemaining, recoveryWordsRemaining, isPaused) {
                 // Draw score
                 this.ctx.font = 'bold 24px Arial';
                 this.ctx.fillStyle = '#ffffff';
@@ -641,6 +641,25 @@
                 // Draw high score
                 this.ctx.textAlign = 'right';
                 this.ctx.fillText(`High Score: ${highScore}`, CANVAS_WIDTH - 20, 40);
+
+                // Show pause overlay if paused
+                if (isPaused) {
+                    // Draw semi-transparent overlay
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                    // Draw pause message
+                    this.ctx.font = 'bold 64px Arial';
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+
+                    this.ctx.font = '24px Arial';
+                    this.ctx.fillStyle = '#aaaaaa';
+                    this.ctx.fillText('Press Escape to resume', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+                    return; // Don't draw rest of UI when paused
+                }
 
                 // Show break notification if on break
                 if (isOnBreak) {
@@ -827,6 +846,7 @@
 
                 this.gameState = GAME_STATES.START;
                 this.lastTime = 0;
+                this.isPaused = false;
 
                 // Break system properties
                 this.isOnBreak = false;
@@ -845,6 +865,19 @@
 
             setupInputHandling() {
                 this.inputHandler.onKeyPress = (e) => {
+                    // Toggle pause with Escape key
+                    if (e.key === 'Escape' && this.gameState === GAME_STATES.PLAYING) {
+                        e.preventDefault();
+                        this.isPaused = !this.isPaused;
+                        console.log(this.isPaused ? 'Game paused' : 'Game resumed');
+                        return;
+                    }
+
+                    // Don't process other inputs while paused
+                    if (this.isPaused) {
+                        return;
+                    }
+
                     if (e.key === ' ' && this.gameState !== GAME_STATES.PLAYING) {
                         e.preventDefault();
                         if (this.gameState === GAME_STATES.START) {
@@ -899,6 +932,7 @@
 
             startGame() {
                 this.gameState = GAME_STATES.PLAYING;
+                this.isPaused = false;
                 this.wordManager.clear();
                 this.scoreManager.reset();
                 this.difficultyManager.reset();
@@ -1000,7 +1034,7 @@
             }
 
             update(currentTime, deltaTime) {
-                if (this.gameState === GAME_STATES.PLAYING) {
+                if (this.gameState === GAME_STATES.PLAYING && !this.isPaused) {
                     const fallSpeed = this.difficultyManager.getFallSpeed();
                     this.wordManager.update(currentTime, deltaTime, fallSpeed);
                     this.renderer.updateEffects();
@@ -1033,7 +1067,8 @@
                         this.scoreManager.getHighScore(),
                         this.isOnBreak,
                         this.breakWordsRemaining,
-                        this.recoveryWordsRemaining
+                        this.recoveryWordsRemaining,
+                        this.isPaused
                     );
                 } else if (this.gameState === GAME_STATES.GAME_OVER) {
                     this.renderer.drawGameOverScreen(
