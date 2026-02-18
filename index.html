@@ -84,8 +84,8 @@
             margin-top: 15px;
             font-size: 32px;
             font-weight: bold;
-            height: 50px;
-            line-height: 50px;
+            height: 70px;
+            line-height: 70px;
             padding: 0 10px;
             background: rgba(255, 255, 255, 0.1);
             border: 3px solid #4a90e2;
@@ -673,6 +673,53 @@
                 // Platform detail
                 this.ctx.fillStyle = '#27ae60';
                 this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 10);
+
+                // Draw houses on the platform
+                this.drawHouses();
+            }
+
+            drawHouses() {
+                const groundY = CANVAS_HEIGHT - 50; // Top of ground platform (Y=550)
+                const houseConfigs = [
+                    { x: 50, width: 70, height: 40, bodyColor: '#e74c3c', roofColor: '#c0392b' },   // Red house
+                    { x: 180, width: 80, height: 45, bodyColor: '#3498db', roofColor: '#2980b9' },  // Blue house
+                    { x: 320, width: 65, height: 35, bodyColor: '#f39c12', roofColor: '#e67e22' },  // Orange house
+                    { x: 450, width: 75, height: 42, bodyColor: '#9b59b6', roofColor: '#8e44ad' },  // Purple house
+                    { x: 590, width: 70, height: 38, bodyColor: '#e91e63', roofColor: '#c2185b' },  // Pink house
+                    { x: 720, width: 60, height: 40, bodyColor: '#00bcd4', roofColor: '#0097a7' }   // Cyan house
+                ];
+
+                houseConfigs.forEach(config => {
+                    this.drawHouse(config.x, groundY, config.width, config.height, config.bodyColor, config.roofColor);
+                });
+            }
+
+            drawHouse(x, groundY, width, height, bodyColor, roofColor) {
+                // House body (rectangle)
+                this.ctx.fillStyle = bodyColor;
+                this.ctx.fillRect(x, groundY - height, width, height);
+
+                // House roof (triangle)
+                this.ctx.fillStyle = roofColor;
+                this.ctx.beginPath();
+                this.ctx.moveTo(x - 10, groundY - height);           // Left corner
+                this.ctx.lineTo(x + width / 2, groundY - height - 20); // Top point
+                this.ctx.lineTo(x + width + 10, groundY - height);   // Right corner
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Windows (2 small squares)
+                this.ctx.fillStyle = '#ffeaa7';
+                const windowSize = 8;
+                const windowY = groundY - height + 12;
+                this.ctx.fillRect(x + 15, windowY, windowSize, windowSize);
+                this.ctx.fillRect(x + width - 23, windowY, windowSize, windowSize);
+
+                // Door (small rectangle)
+                this.ctx.fillStyle = '#6c5ce7';
+                const doorWidth = 12;
+                const doorHeight = 18;
+                this.ctx.fillRect(x + width / 2 - doorWidth / 2, groundY - doorHeight, doorWidth, doorHeight);
             }
 
             drawWords(words) {
