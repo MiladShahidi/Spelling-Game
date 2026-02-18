@@ -666,13 +666,24 @@
                     this.ctx.fill();
                 });
 
-                // Draw ground platform
-                this.ctx.fillStyle = '#2ecc71';
+                // Draw asphalt street
+                this.ctx.fillStyle = '#4a4a4a';
                 this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 50);
 
-                // Platform detail
-                this.ctx.fillStyle = '#27ae60';
-                this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 10);
+                // Street edge detail (darker)
+                this.ctx.fillStyle = '#3a3a3a';
+                this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 3);
+
+                // Draw dashed street markings (yellow center line)
+                this.ctx.fillStyle = '#ffd700';
+                const dashWidth = 30;
+                const dashHeight = 4;
+                const dashSpacing = 40;
+                const centerY = CANVAS_HEIGHT - 25; // Middle of the street
+
+                for (let x = 0; x < CANVAS_WIDTH; x += dashWidth + dashSpacing) {
+                    this.ctx.fillRect(x, centerY - dashHeight / 2, dashWidth, dashHeight);
+                }
 
                 // Draw houses on the platform
                 this.drawHouses();
