@@ -687,17 +687,23 @@
 
                 // Draw houses on the platform
                 this.drawHouses();
+
+                // Draw laser gun/canon
+                this.drawGun();
             }
 
             drawHouses() {
                 const groundY = CANVAS_HEIGHT - 50; // Top of ground platform (Y=550)
                 const houseConfigs = [
-                    { x: 50, width: 70, height: 40, bodyColor: '#e74c3c', roofColor: '#c0392b' },   // Red house
-                    { x: 180, width: 80, height: 45, bodyColor: '#3498db', roofColor: '#2980b9' },  // Blue house
-                    { x: 320, width: 65, height: 35, bodyColor: '#f39c12', roofColor: '#e67e22' },  // Orange house
-                    { x: 450, width: 75, height: 42, bodyColor: '#9b59b6', roofColor: '#8e44ad' },  // Purple house
-                    { x: 590, width: 70, height: 38, bodyColor: '#e91e63', roofColor: '#c2185b' },  // Pink house
-                    { x: 720, width: 60, height: 40, bodyColor: '#00bcd4', roofColor: '#0097a7' }   // Cyan house
+                    // Left side houses (3 houses)
+                    { x: 50, width: 70, height: 40, bodyColor: '#e74c3c', roofColor: '#c0392b' },    // Red house
+                    { x: 150, width: 80, height: 45, bodyColor: '#3498db', roofColor: '#2980b9' },   // Blue house
+                    { x: 265, width: 65, height: 35, bodyColor: '#f39c12', roofColor: '#e67e22' },   // Orange house
+                    // Gun is at center (X=400, extends 375-425)
+                    // Right side houses (3 houses) - symmetric spacing
+                    { x: 470, width: 75, height: 42, bodyColor: '#9b59b6', roofColor: '#8e44ad' },   // Purple house
+                    { x: 580, width: 70, height: 38, bodyColor: '#e91e63', roofColor: '#c2185b' },   // Pink house
+                    { x: 680, width: 60, height: 40, bodyColor: '#00bcd4', roofColor: '#0097a7' }    // Cyan house
                 ];
 
                 houseConfigs.forEach(config => {
@@ -731,6 +737,42 @@
                 const doorWidth = 12;
                 const doorHeight = 18;
                 this.ctx.fillRect(x + width / 2 - doorWidth / 2, groundY - doorHeight, doorWidth, doorHeight);
+            }
+
+            drawGun() {
+                const gunCenterX = CANVAS_WIDTH / 2; // Center of screen (X=400)
+                const groundY = CANVAS_HEIGHT - 50;  // Top of ground (Y=550)
+
+                // Gun base (platform)
+                this.ctx.fillStyle = '#5a5a5a';
+                const baseWidth = 50;
+                const baseHeight = 12;
+                this.ctx.fillRect(gunCenterX - baseWidth / 2, groundY - baseHeight, baseWidth, baseHeight);
+
+                // Gun body (main structure)
+                this.ctx.fillStyle = '#6c7a89';
+                const bodyWidth = 35;
+                const bodyHeight = 20;
+                this.ctx.fillRect(gunCenterX - bodyWidth / 2, groundY - baseHeight - bodyHeight, bodyWidth, bodyHeight);
+
+                // Gun barrel (vertical cannon)
+                this.ctx.fillStyle = '#4a90e2';
+                const barrelWidth = 16;
+                const barrelHeight = 28;
+                this.ctx.fillRect(gunCenterX - barrelWidth / 2, groundY - baseHeight - bodyHeight - barrelHeight, barrelWidth, barrelHeight);
+
+                // Barrel tip (glowing muzzle)
+                this.ctx.fillStyle = '#00ffff';
+                const tipRadius = 6;
+                this.ctx.beginPath();
+                this.ctx.arc(gunCenterX, groundY - baseHeight - bodyHeight - barrelHeight, tipRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Add glow effect to muzzle
+                this.ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+                this.ctx.beginPath();
+                this.ctx.arc(gunCenterX, groundY - baseHeight - bodyHeight - barrelHeight, tipRadius + 4, 0, Math.PI * 2);
+                this.ctx.fill();
             }
 
             drawWords(words) {
@@ -1064,9 +1106,9 @@
                     // Word matched!
                     this.audioManager.playShootSound();
 
-                    // Add shooting beam
+                    // Add shooting beam from gun barrel
                     const beamStartX = CANVAS_WIDTH / 2;
-                    const beamStartY = CANVAS_HEIGHT - 50;
+                    const beamStartY = CANVAS_HEIGHT - 110; // Top of gun barrel (50 ground + 60 gun height)
                     this.renderer.addBeam(beamStartX, beamStartY, matchedWord.x, matchedWord.y);
 
                     // Delay explosion slightly for visual effect
