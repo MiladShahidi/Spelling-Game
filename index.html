@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Type Defense - Typing Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #1e1e2e 0%, #2d1b3d 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #ffffff;
+        }
+
+        #gameContainer {
+            text-align: center;
+            padding: 20px;
+        }
+
+        #gameCanvas {
+            border: 3px solid #4a90e2;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(74, 144, 226, 0.5);
+            background: #0a0e27;
+            display: block;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 15px;
+            color: #4a90e2;
+            text-shadow: 0 0 10px rgba(74, 144, 226, 0.7);
+            font-size: 2.5em;
+        }
+
+        .info {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaaaaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <h1>Type Defense!</h1>
+        <input type="file" id="wordFileInput" accept=".csv,.txt" style="display: none;">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="info">Type the words to shoot them down before they reach the ground!</div>
+    </div>
+
+    <script>
+        // ==================== CONSTANTS ====================
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const GAME_STATES = {
+            START: 'START',
+            PLAYING: 'PLAYING',
+            GAME_OVER: 'GAME_OVER'
+        };
+
+        // ==================== AUDIO MANAGER ====================
+        class AudioManager {
+            constructor() {
+                this.audioContext = null;
+            }
+
+            initAudioContext() {
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playShootSound() {
+                this.initAudioContext();
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 0.1);
+
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + 0.1);
+            }
+
+            playExplosionSound() {
+                this.initAudioContext();
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.2);
+
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + 0.2);
+            }
+
+            playGameOverSound() {
+                this.initAudioContext();
+                const notes = [400, 350, 300, 250];
+                let time = this.audioContext.currentTime;
+
+                notes.forEach((freq, index) => {
+                    const oscillator = this.audioContext.createOscillator();
+                    const gainNode = this.audioContext.createGain();
+
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(freq, time);
+
+                    gainNode.gain.setValueAtTime(0.2, time);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.audioContext.destination);
+
+                    oscillator.start(time);
+                    oscillator.stop(time + 0.2);
+
+                    time += 0.15;
+                });
+            }
+        }
+
+        // ==================== FALLING WORD ====================
+        class FallingWord {
+            constructor(word, x, y, speed) {
+                this.word = word.toLowerCase();
+                this.x = x;
+                this.y = y;
+                this.speed = speed;
+                this.width = 0;
+                this.height = 40;
+                this.active = true;
+            }
+
+            update(deltaTime) {
+                this.y += this.speed * (deltaTime / 16.67); // Normalize to 60 FPS
+            }
+
+            getColor() {
+                const len = this.word.length;
+                if (len <= 4) return '#4ade80'; // green
+                if (len <= 6) return '#fbbf24'; // yellow
+                return '#ef4444'; // red
+            }
+
+            draw(ctx) {
+                const fontSize = 28;
+                ctx.font = `bold ${fontSize}px Arial`;
+                const textWidth = ctx.measureText(this.word).width;
+                this.width = textWidth + 30;
+
+                // Draw alien spaceship (rounded rectangle)
+                const rectX = this.x - this.width / 2;
+                const rectY = this.y - this.height / 2;
+
+                ctx.fillStyle = this.getColor();
+                ctx.beginPath();
+                ctx.roundRect(rectX, rectY, this.width, this.height, 10);
+                ctx.fill();
+
+                // Add darker border
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw text
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.word, this.x, this.y);
+            }
+
+            isOffScreen() {
+                return this.y - this.height / 2 >= CANVAS_HEIGHT - 50; // Ground is at height - 50
+            }
+        }
+
+        // ==================== PARTICLE ====================
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1.0;
+                this.decay = 0.02;
+                this.size = Math.random() * 4 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = `rgba(255, 200, 0, ${this.life})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // ==================== SHOOTING BEAM ====================
+        class ShootingBeam {
+            constructor(startX, startY, endX, endY) {
+                this.startX = startX;
+                this.startY = startY;
+                this.endX = endX;
+                this.endY = endY;
+                this.life = 1.0;
+                this.decay = 0.05;
+            }
+
+            update() {
+                this.life -= this.decay;
+            }
+
+            draw(ctx) {
+                ctx.strokeStyle = `rgba(0, 255, 255, ${this.life})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(this.startX, this.startY);
+                ctx.lineTo(this.endX, this.endY);
+                ctx.stroke();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // ==================== WORD MANAGER ====================
+        class WordManager {
+            constructor() {
+                this.words = [];
+                this.activeWords = [];
+                this.lastSpawnTime = 0;
+                this.spawnInterval = 7000; // milliseconds - increased for easier gameplay
+                this.customWordsAvailable = false;
+                this.loadWords();
+            }
+
+            async loadWords() {
+                try {
+                    const response = await fetch('words.csv');
+                    const text = await response.text();
+                    const loadedWords = text.split('\n')
+                        .map(word => word.trim().toLowerCase())
+                        .filter(word => word.length > 0);
+
+                    if (loadedWords.length > 0) {
+                        this.words = loadedWords;
+                        this.customWordsAvailable = true;
+                        console.log(`Loaded ${this.words.length} words from CSV`);
+                    } else {
+                        this.useFallbackWords();
+                    }
+                } catch (error) {
+                    console.log('Could not load words.csv, using fallback words');
+                    this.customWordsAvailable = false;
+                    this.useFallbackWords();
+                }
+            }
+
+            useFallbackWords() {
+                this.words = [
+                    'cat',
+                    'dog',
+                    'run',
+                    'blue',
+                    'tree',
+                    'fish',
+                    'book',
+                    'star',
+                    'sun',
+                    'red',
+                    'hat',
+                    'pen',
+                    'car',
+                    'fox',
+                    'bed',
+                    'cup',
+                    'bag',
+                    'map',
+                    'toy',
+                    'ant',
+                    'house',
+                    'table',
+                    'green',
+                    'water',
+                    'chair',
+                    'music',
+                    'apple',
+                    'happy',
+                    'river',
+                    'mouse',
+                    'cloud',
+                    'sleep',
+                    'dance',
+                    'smile',
+                    'light',
+                    'paper',
+                    'bread',
+                    'lemon',
+                    'pizza',
+                    'beach',
+                    'elephant',
+                    'computer',
+                    'phone',
+                    'flower',
+                    'mountain',
+                    'city',
+                    'friend',
+                    'family',
+                    'school',
+                    'work',
+                    'play',
+                    'love',
+                    'laugh',
+                    'cry',
+                    'sing',
+                    'jump',
+                    'swim',
+                    'read',
+                    'write',
+                    'listen',
+                    'watch',
+                    'cook',
+                    'clean',
+                    'drive',
+                    'travel',
+                ];
+            }
+
+            async loadWordsFromFile(file) {
+                const reader = new FileReader();
+                return new Promise((resolve, reject) => {
+                    reader.onload = (e) => {
+                        const text = e.target.result;
+                        const loadedWords = text.split('\n')
+                            .map(word => word.trim().toLowerCase())
+                            .filter(word => word.length > 0);
+
+                        if (loadedWords.length > 0) {
+                            this.words = loadedWords;
+                            this.customWordsAvailable = true;
+                            console.log(`Loaded ${loadedWords.length} words from file`);
+                            resolve(loadedWords.length);
+                        } else {
+                            reject(new Error('No words found in file'));
+                        }
+                    };
+                    reader.onerror = () => reject(reader.error);
+                    reader.readAsText(file);
+                });
+            }
+
+            getRandomWord() {
+                if (this.words.length === 0) return 'test';
+                return this.words[Math.floor(Math.random() * this.words.length)];
+            }
+
+            spawnWord(speed) {
+                const word = this.getRandomWord();
+                const x = Math.random() * (CANVAS_WIDTH - 200) + 100; // Keep away from edges
+                const y = 20;
+                const fallingWord = new FallingWord(word, x, y, speed);
+                this.activeWords.push(fallingWord);
+            }
+
+            update(currentTime, deltaTime, fallSpeed) {
+                // Count active words on screen
+                const activeWordCount = this.activeWords.filter(word => word.active).length;
+
+                // Spawn new word if: interval elapsed OR no words on screen
+                const shouldSpawn = (currentTime - this.lastSpawnTime >= this.spawnInterval) ||
+                                   (activeWordCount === 0);
+
+                if (shouldSpawn) {
+                    this.spawnWord(fallSpeed);
+                    this.lastSpawnTime = currentTime;
+                }
+
+                // Update all active words
+                this.activeWords.forEach(word => {
+                    if (word.active) {
+                        word.update(deltaTime);
+                    }
+                });
+            }
+
+            checkGameOver() {
+                return this.activeWords.some(word => word.active && word.isOffScreen());
+            }
+
+            findMatchingWord(typedText) {
+                return this.activeWords.find(word =>
+                    word.active && word.word === typedText.toLowerCase()
+                );
+            }
+
+            removeWord(word) {
+                word.active = false;
+            }
+
+            clear() {
+                this.activeWords = [];
+                this.lastSpawnTime = 0;
+            }
+        }
+
+        // ==================== DIFFICULTY MANAGER ====================
+        class DifficultyManager {
+            constructor() {
+                this.fallSpeed = 0.3;  // Decreased from 0.3 for slower, easier gameplay
+                this.minSpeed = 0.15;  // Decreased from 0.2 to allow even slower speed when struggling
+                this.maxSpeed = 3.0;
+                this.performanceHistory = [];
+                this.wordsDestroyed = 0;
+                this.adjustmentInterval = 5;
+            }
+
+            recordPerformance(word, isOnBreak = false) {
+                const heightScore = word.y / (CANVAS_HEIGHT - 50);
+                this.performanceHistory.push(heightScore);
+                this.wordsDestroyed++;
+
+                // Skip first 5 words (extended learning phase) and skip during breaks
+                if (!isOnBreak && this.wordsDestroyed > 5 && this.wordsDestroyed % this.adjustmentInterval === 0) {
+                    this.adjustDifficulty();
+                }
+            }
+
+            adjustDifficulty() {
+                const recentPerformance = this.performanceHistory.slice(-this.adjustmentInterval);
+                const avgPerformance = recentPerformance.reduce((a, b) => a + b, 0) / recentPerformance.length;
+
+                if (avgPerformance > 0.7) {
+                    // Struggling - make easier
+                    this.fallSpeed *= 0.9;
+                    console.log('Making game easier, new speed:', this.fallSpeed.toFixed(2));
+                } else if (avgPerformance < 0.4) {
+                    // Doing well - make harder
+                    this.fallSpeed *= 1.1;
+                    console.log('Making game harder, new speed:', this.fallSpeed.toFixed(2));
+                }
+
+                // Keep within bounds
+                this.fallSpeed = Math.max(this.minSpeed, Math.min(this.maxSpeed, this.fallSpeed));
+            }
+
+            reset() {
+                this.fallSpeed = 0.2;  // Match the constructor starting speed
+                this.performanceHistory = [];
+                this.wordsDestroyed = 0;
+            }
+
+            getFallSpeed() {
+                return this.fallSpeed;
+            }
+        }
+
+        // ==================== SCORE MANAGER ====================
+        class ScoreManager {
+            constructor() {
+                this.score = 0;
+                this.highScores = this.loadHighScores();
+            }
+
+            loadHighScores() {
+                try {
+                    const stored = localStorage.getItem('typingDefense_highScores');
+                    return stored ? JSON.parse(stored) : [];
+                } catch (e) {
+                    console.error('Could not load high scores:', e);
+                    return [];
+                }
+            }
+
+            saveHighScores() {
+                try {
+                    localStorage.setItem('typingDefense_highScores', JSON.stringify(this.highScores));
+                } catch (e) {
+                    console.error('Could not save high scores:', e);
+                }
+            }
+
+            addScore(score) {
+                const date = new Date().toISOString().split('T')[0];
+                this.highScores.push({ score, date });
+                this.highScores.sort((a, b) => b.score - a.score);
+                this.highScores = this.highScores.slice(0, 10); // Keep top 10
+                this.saveHighScores();
+            }
+
+            getHighScore() {
+                return this.highScores.length > 0 ? this.highScores[0].score : 0;
+            }
+
+            isNewHighScore() {
+                return this.score > this.getHighScore();
+            }
+
+            incrementScore() {
+                this.score++;
+            }
+
+            reset() {
+                this.score = 0;
+            }
+
+            getScore() {
+                return this.score;
+            }
+
+            getTopScores(count = 5) {
+                return this.highScores.slice(0, count);
+            }
+        }
+
+        // ==================== INPUT HANDLER ====================
+        class InputHandler {
+            constructor() {
+                this.currentInput = '';
+                this.setupKeyboardListeners();
+            }
+
+            setupKeyboardListeners() {
+                document.addEventListener('keydown', (e) => {
+                    if (this.onKeyPress) {
+                        this.onKeyPress(e);
+                    }
+                });
+            }
+
+            handleTyping(e) {
+                if (e.key === 'Backspace') {
+                    this.currentInput = this.currentInput.slice(0, -1);
+                } else if (e.key.length === 1 && /[a-z]/i.test(e.key)) {
+                    this.currentInput += e.key.toLowerCase();
+                }
+            }
+
+            clear() {
+                this.currentInput = '';
+            }
+
+            getCurrentInput() {
+                return this.currentInput;
+            }
+        }
+
+        // ==================== GAME RENDERER ====================
+        class GameRenderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.stars = this.generateStars(100);
+                this.particles = [];
+                this.beams = [];
+            }
+
+            generateStars(count) {
+                const stars = [];
+                for (let i = 0; i < count; i++) {
+                    stars.push({
+                        x: Math.random() * CANVAS_WIDTH,
+                        y: Math.random() * CANVAS_HEIGHT,
+                        radius: Math.random() * 2
+                    });
+                }
+                return stars;
+            }
+
+            clear() {
+                this.ctx.fillStyle = '#0a0e27';
+                this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
+
+            drawBackground() {
+                // Draw stars
+                this.ctx.fillStyle = '#ffffff';
+                this.stars.forEach(star => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+
+                // Draw ground platform
+                this.ctx.fillStyle = '#2ecc71';
+                this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 50);
+
+                // Platform detail
+                this.ctx.fillStyle = '#27ae60';
+                this.ctx.fillRect(0, CANVAS_HEIGHT - 50, CANVAS_WIDTH, 10);
+            }
+
+            drawWords(words) {
+                words.forEach(word => {
+                    if (word.active) {
+                        word.draw(this.ctx);
+                    }
+                });
+            }
+
+            drawInput(input, score, highScore, isOnBreak, breakWordsRemaining, recoveryWordsRemaining) {
+                // Draw score
+                this.ctx.font = 'bold 24px Arial';
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.textAlign = 'left';
+                this.ctx.fillText(`Score: ${score}`, 20, 40);
+
+                // Draw high score
+                this.ctx.textAlign = 'right';
+                this.ctx.fillText(`High Score: ${highScore}`, CANVAS_WIDTH - 20, 40);
+
+                // Show break notification if on break
+                if (isOnBreak) {
+                    // Draw semi-transparent overlay at top
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    this.ctx.fillRect(0, 0, CANVAS_WIDTH, 100);
+
+                    // Draw break message
+                    this.ctx.font = 'bold 36px Arial';
+                    this.ctx.fillStyle = '#4ade80';
+                    this.ctx.textAlign = 'center';
+
+                    if (breakWordsRemaining > 0) {
+                        // Still in break period
+                        this.ctx.fillText(`BREAK TIME! Score: ${score}`, CANVAS_WIDTH / 2, 40);
+                        this.ctx.font = '24px Arial';
+                        this.ctx.fillText(`${breakWordsRemaining} words remaining`, CANVAS_WIDTH / 2, 75);
+                    } else if (recoveryWordsRemaining > 0) {
+                        // In recovery phase
+                        this.ctx.fillText('Speeding back up...', CANVAS_WIDTH / 2, 50);
+                    }
+                }
+
+                // Draw input box
+                const boxWidth = 400;
+                const boxHeight = 60;
+                const boxX = CANVAS_WIDTH / 2 - boxWidth / 2;
+                const boxY = CANVAS_HEIGHT - 120;
+
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                this.ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+
+                this.ctx.strokeStyle = '#4a90e2';
+                this.ctx.lineWidth = 3;
+                this.ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+                // Draw input text
+                this.ctx.font = 'bold 32px Arial';
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText(input, CANVAS_WIDTH / 2, boxY + boxHeight / 2);
+            }
+
+            drawStartScreen(highScore, wordManager) {
+                this.clear();
+                this.drawBackground();
+
+                this.ctx.font = 'bold 64px Arial';
+                this.ctx.fillStyle = '#4a90e2';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('TYPE DEFENSE!', CANVAS_WIDTH / 2, 150);
+
+                this.ctx.font = '28px Arial';
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillText('Type the words to shoot them down!', CANVAS_WIDTH / 2, 250);
+
+                if (highScore > 0) {
+                    this.ctx.font = '24px Arial';
+                    this.ctx.fillStyle = '#fbbf24';
+                    this.ctx.fillText(`High Score: ${highScore}`, CANVAS_WIDTH / 2, 320);
+                }
+
+                // Show word list info
+                this.ctx.font = '18px Arial';
+                this.ctx.fillStyle = '#aaaaaa';
+                const wordCount = wordManager.words.length;
+                this.ctx.fillText(`Using ${wordCount} words`, CANVAS_WIDTH / 2, 380);
+
+                // Show load option if custom words not available
+                if (!wordManager.customWordsAvailable) {
+                    this.ctx.font = '20px Arial';
+                    this.ctx.fillStyle = '#fbbf24';
+                    this.ctx.fillText('Click here to load custom word list', CANVAS_WIDTH / 2, 410);
+
+                    // Store click region for event handling
+                    this.loadWordsClickRegion = {
+                        x: CANVAS_WIDTH / 2 - 150,
+                        y: 395,
+                        width: 300,
+                        height: 30
+                    };
+                } else {
+                    // Clear click region if custom words are loaded
+                    this.loadWordsClickRegion = null;
+                }
+
+                this.ctx.font = 'bold 32px Arial';
+                this.ctx.fillStyle = '#4ade80';
+                this.ctx.fillText('Press SPACE to Start', CANVAS_WIDTH / 2, 470);
+
+                // Animate instruction text
+                const alpha = Math.sin(Date.now() / 500) * 0.3 + 0.7;
+                this.ctx.fillStyle = `rgba(74, 222, 128, ${alpha})`;
+                this.ctx.fillText('Press SPACE to Start', CANVAS_WIDTH / 2, 470);
+            }
+
+            drawGameOverScreen(score, highScore, isNewHigh, topScores) {
+                this.clear();
+                this.drawBackground();
+
+                this.ctx.font = 'bold 56px Arial';
+                this.ctx.fillStyle = '#ef4444';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText('GAME OVER!', CANVAS_WIDTH / 2, 120);
+
+                this.ctx.font = '32px Arial';
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillText(`Final Score: ${score}`, CANVAS_WIDTH / 2, 200);
+
+                if (isNewHigh) {
+                    this.ctx.font = 'bold 28px Arial';
+                    this.ctx.fillStyle = '#fbbf24';
+                    this.ctx.fillText('NEW HIGH SCORE!', CANVAS_WIDTH / 2, 250);
+                }
+
+                // Draw top scores
+                this.ctx.font = 'bold 24px Arial';
+                this.ctx.fillStyle = '#4a90e2';
+                this.ctx.fillText('Top Scores:', CANVAS_WIDTH / 2, 320);
+
+                this.ctx.font = '20px Arial';
+                this.ctx.fillStyle = '#ffffff';
+                topScores.forEach((scoreData, index) => {
+                    const text = `${index + 1}. ${scoreData.score} - ${scoreData.date}`;
+                    this.ctx.fillText(text, CANVAS_WIDTH / 2, 360 + index * 30);
+                });
+
+                this.ctx.font = 'bold 28px Arial';
+                this.ctx.fillStyle = '#4ade80';
+                const alpha = Math.sin(Date.now() / 500) * 0.3 + 0.7;
+                this.ctx.fillStyle = `rgba(74, 222, 128, ${alpha})`;
+                this.ctx.fillText('Press SPACE to Play Again', CANVAS_WIDTH / 2, 540);
+            }
+
+            addExplosion(x, y) {
+                for (let i = 0; i < 12; i++) {
+                    this.particles.push(new Particle(x, y));
+                }
+            }
+
+            addBeam(startX, startY, endX, endY) {
+                this.beams.push(new ShootingBeam(startX, startY, endX, endY));
+            }
+
+            updateEffects() {
+                // Update and remove dead particles
+                this.particles = this.particles.filter(particle => {
+                    particle.update();
+                    return !particle.isDead();
+                });
+
+                // Update and remove dead beams
+                this.beams = this.beams.filter(beam => {
+                    beam.update();
+                    return !beam.isDead();
+                });
+            }
+
+            drawEffects() {
+                // Draw beams
+                this.beams.forEach(beam => beam.draw(this.ctx));
+
+                // Draw particles
+                this.particles.forEach(particle => particle.draw(this.ctx));
+            }
+
+            clearEffects() {
+                this.particles = [];
+                this.beams = [];
+            }
+        }
+
+        // ==================== GAME CONTROLLER ====================
+        class GameController {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.renderer = new GameRenderer(this.canvas);
+                this.wordManager = new WordManager();
+                this.inputHandler = new InputHandler();
+                this.difficultyManager = new DifficultyManager();
+                this.scoreManager = new ScoreManager();
+                this.audioManager = new AudioManager();
+
+                this.gameState = GAME_STATES.START;
+                this.lastTime = 0;
+
+                // Break system properties
+                this.isOnBreak = false;
+                this.breakWordsRemaining = 0;
+                this.recoveryWordsRemaining = 0;
+                this.preBreakSpeed = 0;
+                this.targetSpeed = 0;
+                this.breakWordCount = 5; // Break lasts for 5 words destroyed
+                this.recoveryWordCount = 3; // Gradual recovery over 3 words
+
+                this.setupInputHandling();
+                this.setupFileInput();
+                this.setupCanvasClick();
+                this.gameLoop(0);
+            }
+
+            setupInputHandling() {
+                this.inputHandler.onKeyPress = (e) => {
+                    if (e.key === ' ' && this.gameState !== GAME_STATES.PLAYING) {
+                        e.preventDefault();
+                        if (this.gameState === GAME_STATES.START) {
+                            this.startGame();
+                        } else if (this.gameState === GAME_STATES.GAME_OVER) {
+                            this.resetGame();
+                        }
+                    } else if (this.gameState === GAME_STATES.PLAYING) {
+                        e.preventDefault();
+                        this.inputHandler.handleTyping(e);
+                        this.checkWordMatch();
+                    }
+                };
+            }
+
+            setupFileInput() {
+                const fileInput = document.getElementById('wordFileInput');
+                fileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        try {
+                            const wordCount = await this.wordManager.loadWordsFromFile(file);
+                            console.log(`Successfully loaded ${wordCount} words from file`);
+                            // Force redraw to show updated word count
+                            this.render();
+                        } catch (error) {
+                            console.error('Failed to load word file:', error);
+                            alert('Failed to load word file. Please check the format.');
+                        }
+                    }
+                });
+            }
+
+            setupCanvasClick() {
+                this.canvas.addEventListener('click', (e) => {
+                    if (this.gameState === GAME_STATES.START) {
+                        const rect = this.canvas.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+
+                        // Check if clicked on "load words" area
+                        if (this.renderer.loadWordsClickRegion) {
+                            const region = this.renderer.loadWordsClickRegion;
+                            if (x >= region.x && x <= region.x + region.width &&
+                                y >= region.y && y <= region.y + region.height) {
+                                document.getElementById('wordFileInput').click();
+                            }
+                        }
+                    }
+                });
+            }
+
+            startGame() {
+                this.gameState = GAME_STATES.PLAYING;
+                this.wordManager.clear();
+                this.scoreManager.reset();
+                this.difficultyManager.reset();
+                this.inputHandler.clear();
+                this.renderer.clearEffects();
+                // Set lastSpawnTime far in the past so first word spawns immediately
+                this.wordManager.lastSpawnTime = performance.now() - this.wordManager.spawnInterval;
+            }
+
+            resetGame() {
+                this.startGame();
+            }
+
+            startBreak() {
+                // Only start break if not already on one
+                if (this.isOnBreak) return;
+
+                this.isOnBreak = true;
+                this.breakWordsRemaining = this.breakWordCount;
+                this.recoveryWordsRemaining = 0;
+
+                // Save current speed before slowing down
+                this.preBreakSpeed = this.difficultyManager.getFallSpeed();
+                this.targetSpeed = this.preBreakSpeed;
+
+                // Slow down to 30% of current speed (or minimum, whichever is higher)
+                const breakSpeed = Math.max(this.preBreakSpeed * 0.3, this.difficultyManager.minSpeed);
+                this.difficultyManager.fallSpeed = breakSpeed;
+
+                console.log(`Break started at score ${this.scoreManager.getScore()}! Speed: ${this.preBreakSpeed.toFixed(2)} → ${breakSpeed.toFixed(2)}. Break will last ${this.breakWordCount} words.`);
+            }
+
+            checkWordMatch() {
+                const typedText = this.inputHandler.getCurrentInput();
+                if (typedText.length === 0) return;
+
+                const matchedWord = this.wordManager.findMatchingWord(typedText);
+                if (matchedWord) {
+                    // Word matched!
+                    this.audioManager.playShootSound();
+
+                    // Add shooting beam
+                    const beamStartX = CANVAS_WIDTH / 2;
+                    const beamStartY = CANVAS_HEIGHT - 50;
+                    this.renderer.addBeam(beamStartX, beamStartY, matchedWord.x, matchedWord.y);
+
+                    // Delay explosion slightly for visual effect
+                    setTimeout(() => {
+                        this.audioManager.playExplosionSound();
+                        this.renderer.addExplosion(matchedWord.x, matchedWord.y);
+                    }, 100);
+
+                    // Record performance and update difficulty
+                    this.difficultyManager.recordPerformance(matchedWord, this.isOnBreak);
+
+                    // Update score and remove word
+                    this.scoreManager.incrementScore();
+                    this.wordManager.removeWord(matchedWord);
+
+                    // Check if we hit a score milestone (multiple of 100)
+                    const currentScore = this.scoreManager.getScore();
+                    if (currentScore > 0 && currentScore % 100 === 0) {
+                        this.startBreak();
+                    }
+
+                    // Handle break/recovery word counting
+                    if (this.isOnBreak) {
+                        if (this.breakWordsRemaining > 0) {
+                            // Still in break period
+                            this.breakWordsRemaining--;
+                            console.log(`Break words remaining: ${this.breakWordsRemaining}`);
+
+                            if (this.breakWordsRemaining === 0) {
+                                // Break period ended, start recovery
+                                this.recoveryWordsRemaining = this.recoveryWordCount;
+                                console.log(`Break ended, starting recovery over ${this.recoveryWordCount} words`);
+                            }
+                        } else if (this.recoveryWordsRemaining > 0) {
+                            // In recovery phase - gradually speed up
+                            this.recoveryWordsRemaining--;
+
+                            // Calculate speed increment per word during recovery
+                            const speedIncrement = (this.targetSpeed - this.difficultyManager.fallSpeed) / (this.recoveryWordsRemaining + 1);
+                            this.difficultyManager.fallSpeed += speedIncrement;
+
+                            console.log(`Recovery progress: ${this.recoveryWordCount - this.recoveryWordsRemaining}/${this.recoveryWordCount}, Speed: ${this.difficultyManager.fallSpeed.toFixed(2)}`);
+
+                            if (this.recoveryWordsRemaining === 0) {
+                                // Recovery complete - ensure we're at target speed
+                                this.difficultyManager.fallSpeed = this.targetSpeed;
+                                this.isOnBreak = false;
+                                console.log(`Recovery complete! Speed restored to ${this.targetSpeed.toFixed(2)}`);
+                            }
+                        }
+                    }
+
+                    this.inputHandler.clear();
+                }
+            }
+
+            update(currentTime, deltaTime) {
+                if (this.gameState === GAME_STATES.PLAYING) {
+                    const fallSpeed = this.difficultyManager.getFallSpeed();
+                    this.wordManager.update(currentTime, deltaTime, fallSpeed);
+                    this.renderer.updateEffects();
+
+                    // Check game over
+                    if (this.wordManager.checkGameOver()) {
+                        this.gameOver();
+                    }
+                }
+            }
+
+            gameOver() {
+                this.gameState = GAME_STATES.GAME_OVER;
+                this.audioManager.playGameOverSound();
+                this.scoreManager.addScore(this.scoreManager.getScore());
+            }
+
+            render() {
+                this.renderer.clear();
+                this.renderer.drawBackground();
+
+                if (this.gameState === GAME_STATES.START) {
+                    this.renderer.drawStartScreen(this.scoreManager.getHighScore(), this.wordManager);
+                } else if (this.gameState === GAME_STATES.PLAYING) {
+                    this.renderer.drawWords(this.wordManager.activeWords);
+                    this.renderer.drawEffects();
+                    this.renderer.drawInput(
+                        this.inputHandler.getCurrentInput(),
+                        this.scoreManager.getScore(),
+                        this.scoreManager.getHighScore(),
+                        this.isOnBreak,
+                        this.breakWordsRemaining,
+                        this.recoveryWordsRemaining
+                    );
+                } else if (this.gameState === GAME_STATES.GAME_OVER) {
+                    this.renderer.drawGameOverScreen(
+                        this.scoreManager.getScore(),
+                        this.scoreManager.getHighScore(),
+                        this.scoreManager.isNewHighScore(),
+                        this.scoreManager.getTopScores()
+                    );
+                }
+            }
+
+            gameLoop(timestamp) {
+                const deltaTime = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                this.update(timestamp, deltaTime);
+                this.render();
+
+                requestAnimationFrame((ts) => this.gameLoop(ts));
+            }
+        }
+
+        // ==================== START GAME ====================
+        window.addEventListener('load', () => {
+            new GameController();
+        });
+    </script>
+</body>
+</html>
