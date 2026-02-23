@@ -311,18 +311,13 @@
 
         // ==================== CAR ====================
         class Car {
-            constructor() {
+            constructor(carImage) {
                 this.x = -60; // Start off-screen to the left
-                this.y = CANVAS_HEIGHT - 35; // Position on street (15px from bottom)
+                this.y = CANVAS_HEIGHT - 45; // Position on street (15px from bottom)
                 this.speed = 0.4 + Math.random() * 0.2; // Random speed between 0.4 and 0.6
-                this.width = 50;
-                this.height = 25;
-                this.color = this.getRandomCarColor();
-            }
-
-            getRandomCarColor() {
-                const colors = ['#e74c3c', '#3498db', '#f39c12', '#9b59b6', '#1abc9c', '#e91e63'];
-                return colors[Math.floor(Math.random() * colors.length)];
+                this.width = 80;
+                this.height = 40;
+                this.carImage = carImage; // Store reference to the car image
             }
 
             update(deltaTime) {
@@ -330,35 +325,14 @@
             }
 
             draw(ctx) {
-                // Car body
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x, this.y, this.width, this.height);
-
-                // Car roof (smaller rectangle on top)
-                ctx.fillStyle = this.color;
-                const roofWidth = 30;
-                const roofHeight = 12;
-                const roofX = this.x + (this.width - roofWidth) / 2;
-                ctx.fillRect(roofX, this.y - roofHeight, roofWidth, roofHeight);
-
-                // Windows (light blue)
-                ctx.fillStyle = '#87ceeb';
-                const windowWidth = 10;
-                const windowHeight = 8;
-                const windowY = this.y - roofHeight + 2;
-                ctx.fillRect(roofX + 4, windowY, windowWidth, windowHeight);
-                ctx.fillRect(roofX + roofWidth - 14, windowY, windowWidth, windowHeight);
-
-                // Wheels (dark circles)
-                ctx.fillStyle = '#2c3e50';
-                const wheelRadius = 5;
-                const wheelY = this.y + this.height;
-                ctx.beginPath();
-                ctx.arc(this.x + 12, wheelY, wheelRadius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(this.x + this.width - 12, wheelY, wheelRadius, 0, Math.PI * 2);
-                ctx.fill();
+                if (this.carImage) {
+                    // Draw the car image
+                    ctx.drawImage(this.carImage, this.x, this.y, this.width, this.height);
+                } else {
+                    // Fallback: draw a simple colored rectangle if image isn't loaded
+                    ctx.fillStyle = '#3498db';
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
             }
 
             isOffScreen() {
@@ -698,6 +672,20 @@
                 this.cars = [];
                 this.lastCarSpawnTime = 0;
                 this.carSpawnInterval = 3000 + Math.random() * 4000; // Random 3-7 seconds
+                this.carImage = null;
+                this.loadCarImage();
+            }
+
+            loadCarImage() {
+                const img = new Image();
+                img.onload = () => {
+                    this.carImage = img;
+                    console.log('Car image loaded:', img.width, 'x', img.height);
+                };
+                img.onerror = () => {
+                    console.error('Failed to load car-1.png');
+                };
+                img.src = 'car-1.png';
             }
 
             generateStars(count) {
@@ -841,7 +829,7 @@
                 const timeSinceLastSpawn = currentTime - this.lastCarSpawnTime;
 
                 if (activeCars < 2 && timeSinceLastSpawn >= this.carSpawnInterval) {
-                    this.cars.push(new Car());
+                    this.cars.push(new Car(this.carImage)); // Pass the car image
                     this.lastCarSpawnTime = currentTime;
                     // Set next spawn interval randomly (3-7 seconds)
                     this.carSpawnInterval = 3000 + Math.random() * 4000;
